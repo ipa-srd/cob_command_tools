@@ -70,6 +70,7 @@ import roslib
 roslib.load_manifest('cob_script_server')
 import rospy
 import actionlib
+import tf
 
 # msg imports
 from trajectory_msgs.msg import *
@@ -168,6 +169,7 @@ class simple_script_server:
 		self.ns_global_prefix = "/script_server"
 		self.wav_path = ""
 		self.parse = parse
+		self.listener = tf.TransformListener()
 		
 		# init publishers
 		self.pub_light = rospy.Publisher('/light_controller/command', ColorRGBA)
@@ -307,9 +309,9 @@ class simple_script_server:
 	# \param component_name Name of the component.
 	# \param parameter_name Name of the parameter on the ROS parameter server.
 	# \param blocking Bool value to specify blocking behaviour.
-	def move(self,component_name,parameter_name,blocking=True, mode=None):
+	def move(self,component_name,parameter_name,blocking=True, mode=None, base_frame="/map"):
 		if component_name == "base":
-			return self.move_base(component_name,parameter_name,blocking, mode)
+			return self.move_base(component_name,parameter_name,blocking, mode, base_frame)
 		elif component_name == "arm" and mode=="planned":
 			return self.move_planned(component_name,parameter_name,blocking)
 		else:
@@ -322,7 +324,7 @@ class simple_script_server:
 	# \param component_name Name of the component.
 	# \param parameter_name Name of the parameter on the ROS parameter server.
 	# \param blocking Bool value to specify blocking behaviour.
-	def move_base(self,component_name,parameter_name,blocking, mode):
+	def move_base(self,component_name,parameter_name,blocking, mode, base_frame):
 		ah = action_handle("move", component_name, parameter_name, blocking, self.parse)
 		if(self.parse):
 			return ah
@@ -368,12 +370,12 @@ class simple_script_server:
 						ah.set_failed(3)
 						return ah
 					else:
-						rospy.logdebug("accepted parameter %f for %s",i,component_name)
+						rospy.logdebug("accepted parameter %f for %s",i,component_name)   
 
 		# convert to pose message
 		pose = PoseStamped()
-		pose.header.stamp = rospy.Time.now()
-		pose.header.frame_id = "/map"
+		pose.header.stamp = rospy.Time(0) #rospy.Time.now()
+		pose.header.frame_id = base_frame
 		pose.pose.position.x = param[0]
 		pose.pose.position.y = param[1]
 		pose.pose.position.z = 0.0
@@ -383,6 +385,15 @@ class simple_script_server:
 		pose.pose.orientation.z = q[2]
 		pose.pose.orientation.w = q[3]
 		
+		if not base_frame == "/map":
+			try:
+				pose_tf = self.listener.transformPose("/map", pose)
+			except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+				print "Lookup ERROR"
+				return ah
+		else:
+		  pose_tf = pose
+		  
 		# call action server
 		if(mode == None or mode == ""):
 			action_server_name = "/move_base"
@@ -412,7 +423,7 @@ class simple_script_server:
 
 		# sending goal
 		client_goal = MoveBaseGoal()
-		client_goal.target_pose = pose
+		client_goal.target_pose = pose_tf
 		#print client_goal
 		client.send_goal(client_goal)
 		ah.set_client(client)
