@@ -305,7 +305,7 @@ class simple_script_server:
 	# \param component_name Name of the component.
 	# \param parameter_name Name of the parameter on the ROS parameter server.
 	# \param blocking Bool value to specify blocking behaviour.
-	def move(self,component_name,parameter_name,blocking=True, mode=None, base_frame="/map"):
+	def move(self,component_name,parameter_name,blocking=True, mode=None, base_frame="map"):
 		if component_name == "base":
 			return self.move_base(component_name,parameter_name,blocking, mode, base_frame)
 		elif component_name == "arm" and mode=="planned":
@@ -320,7 +320,7 @@ class simple_script_server:
 	# \param component_name Name of the component.
 	# \param parameter_name Name of the parameter on the ROS parameter server.
 	# \param blocking Bool value to specify blocking behaviour.
-	def move_base(self,component_name,parameter_name,blocking, mode, base_frame):
+	def move_base(self,component_name,parameter_name,blocking, mode, base_frame):		
 		ah = action_handle("move", component_name, parameter_name, blocking, self.parse)
 		if(self.parse):
 			return ah
@@ -369,8 +369,9 @@ class simple_script_server:
 						rospy.logdebug("accepted parameter %f for %s",i,component_name)  
 
 		# convert to pose message
+		now = rospy.Time(0)
 		pose = PoseStamped()
-		pose.header.stamp = rospy.Time(0)
+		pose.header.stamp = now
 		pose.header.frame_id = base_frame
 		pose.pose.position.x = param[0]
 		pose.pose.position.y = param[1]
@@ -381,14 +382,15 @@ class simple_script_server:
 		pose.pose.orientation.z = q[2]
 		pose.pose.orientation.w = q[3]
 		
-		if not base_frame == "/map":
-      try:
-        pose_tf = self.listener.transformPose("/map", pose)
-      except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-        print "Lookup ERROR"
+		if not base_frame == "map":
+			try:				
+				self.listener.waitForTransform("map",base_frame, now, rospy.Duration(0.2))
+				pose_tf = self.listener.transformPose('map', pose)
+			except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+				print "Lookup ERROR!"
 				return ah
 		else:
-		  pose_tf = pose		  
+			pose_tf = pose		  
 		
 		# call action server
 		if(mode == None or mode == ""):
@@ -933,7 +935,7 @@ class action_handle:
 	def set_succeeded(self):
 		if self.client_mode != "": # not processing an actionlib client
 			self.client_state = 3
-		self.state = ScriptState.SUCCEEDED
+		self.state = ScriptState.		SUCCEEDED
 		self.error_code = 0
 		self.PublishState()
 		
